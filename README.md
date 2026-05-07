@@ -72,6 +72,18 @@ ruff format --check .
 pytest
 ```
 
+## Маркетинг и автопостинг в TikTok
+
+В репозитории также есть подпакет `tiktok_autopost` — клиент к
+[официальному TikTok Content Posting API](https://developers.tiktok.com/doc/content-posting-api-get-started)
+для публикации промо-роликов на собственный аккаунт бота. Это
+**не** массовый комментер и не накрутчик — такие инструменты
+нарушают [правила TikTok](https://www.tiktok.com/community-guidelines)
+и быстро приводят к бану.
+
+* Подробная инструкция: [`tiktok_autopost/README.md`](tiktok_autopost/README.md).
+* Готовые сценарии для роликов: [`marketing/tiktok_scripts.md`](marketing/tiktok_scripts.md).
+
 ## Лицензия
 
 [MIT](LICENSE)
