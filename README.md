@@ -1,68 +1,68 @@
-# gpt-telegram-bot
+# Telegram Media Downloader Bot
 
-Telegram-бот на базе OpenAI GPT по типу [@GPT4Telegrambot](https://t.me/GPT4Telegrambot).
+Telegram-бот, который качает видео и аудио по ссылке: YouTube, TikTok, Instagram,
+X (Twitter), Reddit, Facebook, VK, SoundCloud и ещё [более 1500 сайтов][sites].
+Под капотом — [`yt-dlp`](https://github.com/yt-dlp/yt-dlp), без платных API.
 
 ## Возможности
 
-- Чат с моделью OpenAI (`gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `gpt-3.5-turbo`) и историей диалога
-- Генерация изображений через DALL-E (`dall-e-3`, `dall-e-2`) — команда `/image`
-- Расшифровка голосовых, аудио и кружочков через Whisper
-- Переключение модели чата и модели картинок прямо из чата (inline-кнопки)
-- Команда `/reset` — очистить историю
-- Опциональный allow-list пользователей через `ALLOWED_USER_IDS`
+- Кидаешь в чат любую ссылку — бот отвечает превью и кнопками «Видео» / «Аудио (MP3)».
+- Видео отдаётся как `mp4` (с поддержкой стриминга в TG).
+- Аудио конвертируется в `mp3 192 kbps` через ffmpeg.
+- Уважает 50‑мегабайтный лимит Telegram: если файл больше — присылает понятную ошибку.
+- Опциональный allow‑list пользователей через `ALLOWED_USER_IDS`.
+- Поддержка cookies‑файла для приватных/возрастных видео.
+- Запускается одной командой в Docker.
 
 ## Команды
 
-| Команда         | Что делает                              |
-|-----------------|------------------------------------------|
-| `/start`        | Приветствие и список команд              |
-| `/help`         | Справка                                  |
-| `/reset`        | Сброс истории диалога                    |
-| `/model`        | Выбор модели чата                        |
-| `/image_model`  | Выбор модели для картинок                |
-| `/image <текст>`| Сгенерировать картинку по описанию       |
+| Команда   | Что делает                              |
+|-----------|------------------------------------------|
+| `/start`  | Приветствие и краткий мануал             |
+| `/help`   | То же, что `/start`                      |
+| `/about`  | Поддерживаемые сайты и ограничения       |
 
-Любой обычный текст — это сообщение в чат с GPT. Голосовое/аудио/кружочек —
-бот сам распознает и ответит.
+Любое сообщение со ссылкой запускает скачивание.
 
 ## Быстрый старт
 
-Понадобится Python 3.10+.
+Нужен Python 3.10+ и установленный `ffmpeg`.
 
 ```bash
-git clone https://github.com/<your-username>/gpt-telegram-bot.git
-cd gpt-telegram-bot
+git clone https://github.com/ahmedkadhim351-ux/gpttelegram.git
+cd gpttelegram
 
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
 cp .env.example .env
-# заполните TELEGRAM_BOT_TOKEN и OPENAI_API_KEY в .env
+# заполни TELEGRAM_BOT_TOKEN
 
 python -m bot
 ```
 
-## Переменные окружения
-
-См. [.env.example](.env.example). Ключевые:
-
-- `TELEGRAM_BOT_TOKEN` — токен от [@BotFather](https://t.me/BotFather) (обязательно)
-- `OPENAI_API_KEY` — ключ OpenAI (обязательно)
-- `OPENAI_BASE_URL` — необязательно, для прокси или совместимых API
-- `ALLOWED_USER_IDS` — список ID через запятую; пусто = доступ всем
-- `DEFAULT_MODEL` — модель чата по умолчанию (по умолчанию `gpt-4o-mini`)
-- `DEFAULT_IMAGE_MODEL` — модель картинок (`dall-e-3` по умолчанию)
-- `WHISPER_MODEL` — модель распознавания (`whisper-1`)
-- `HISTORY_LIMIT` — сколько последних сообщений хранить в истории (по умолчанию 20)
-- `SYSTEM_PROMPT` — системный промпт, который отправляется в начале каждого диалога
-
 ## Запуск в Docker
 
 ```bash
-docker build -t gpt-telegram-bot .
-docker run --rm --env-file .env gpt-telegram-bot
+docker build -t media-telegram-bot .
+docker run --rm --env-file .env media-telegram-bot
 ```
+
+`ffmpeg` уже зашит в образ.
+
+## Переменные окружения
+
+Полный список — в [`.env.example`](.env.example).
+
+| Переменная          | Назначение                                                          |
+|---------------------|---------------------------------------------------------------------|
+| `TELEGRAM_BOT_TOKEN`| Токен от [@BotFather](https://t.me/BotFather). Обязательно.         |
+| `ALLOWED_USER_IDS`  | Через запятую — кому разрешён доступ. Пусто = всем.                 |
+| `MAX_FILE_SIZE_MB`  | Потолок размера итогового файла. По умолчанию 50.                   |
+| `MAX_VIDEO_HEIGHT`  | Максимальная высота видео в пикселях. По умолчанию 720.             |
+| `COOKIES_FILE`      | Путь к Netscape‑cookies для входа на платформах с авторизацией.     |
+| `LOG_LEVEL`         | `DEBUG` / `INFO` / `WARNING` / `ERROR`. По умолчанию `INFO`.        |
 
 ## Разработка
 
@@ -72,6 +72,28 @@ ruff format --check .
 pytest
 ```
 
+Структура проекта:
+
+```
+bot/
+├── app.py            # фабрика Application и точка входа
+├── config.py         # загрузка настроек из env
+├── handlers/         # /start, /help, обработчик ссылок и колбэков
+├── services/
+│   ├── cache.py      # короткоживущий стор для callback_data
+│   └── downloader.py # async-обёртка над yt-dlp
+└── utils/url.py      # извлечение URL из текста сообщения
+```
+
+## Ограничения
+
+- Telegram пускает ботов заливать файлы до 50 МБ. Для роликов больше — нужен
+  self‑hosted [Bot API server](https://github.com/tdlib/telegram-bot-api).
+- Прямые трансляции и плейлисты осознанно не поддерживаются.
+- yt‑dlp периодически ломается на отдельных сайтах — обновляй версию.
+
 ## Лицензия
 
 [MIT](LICENSE)
+
+[sites]: https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md
