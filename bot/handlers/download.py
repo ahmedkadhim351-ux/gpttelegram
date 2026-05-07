@@ -100,6 +100,17 @@ def _format_size_mb(size_bytes: int) -> str:
     return f"{size_bytes / 1024 / 1024:.1f}"
 
 
+def _short_reason(err: BaseException) -> str:
+    msg = str(err).strip().splitlines()[0] if str(err).strip() else err.__class__.__name__
+    # Strip yt-dlp's "ERROR: [extractor] " prefix if present.
+    for prefix in ("ERROR: ", "error: "):
+        if msg.startswith(prefix):
+            msg = msg[len(prefix) :]
+    if msg.startswith("[") and "]" in msg:
+        msg = msg.split("]", 1)[1].lstrip()
+    return msg[:200] or "неизвестная ошибка"
+
+
 def _format_choice_message(info: MediaInfo) -> str:
     title = html.escape(info.title or "Без названия")
     lines = [f"✨ <b>{title}</b>"]
@@ -147,7 +158,8 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     except DownloadError as err:
         logger.warning("fetch_info failed for %s: %s", url, err)
         await placeholder.edit_text(
-            "❌ <b>Не удалось получить инфо о видео.</b>\nПроверь ссылку и попробуй ещё раз.",
+            "❌ <b>Не удалось получить инфо о видео.</b>\n"
+            f"<i>{html.escape(_short_reason(err))}</i>",
             parse_mode="HTML",
         )
         return
@@ -262,7 +274,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     except DownloadError as err:
         logger.warning("download failed for %s: %s", url, err)
         await query.edit_message_text(
-            "❌ <b>Ошибка при скачивании.</b>\nПопробуй ещё раз через минуту.",
+            f"❌ <b>Ошибка при скачивании.</b>\n<i>{html.escape(_short_reason(err))}</i>",
             parse_mode="HTML",
         )
         return
