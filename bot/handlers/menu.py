@@ -19,7 +19,6 @@ SECTION_SITES = "sites"
 SECTION_HELP = "help"
 SECTION_LIMITS = "limits"
 
-GITHUB_URL = "https://github.com/ahmedkadhim351-ux/gpttelegram"
 SUPPORTED_SITES_URL = "https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md"
 
 
@@ -96,7 +95,6 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
                     "⚙️ Лимиты",
                     callback_data=f"{CALLBACK_PREFIX}:{SECTION_LIMITS}",
                 ),
-                InlineKeyboardButton("⭐ GitHub", url=GITHUB_URL),
             ],
         ]
     )
