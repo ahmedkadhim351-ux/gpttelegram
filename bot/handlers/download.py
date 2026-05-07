@@ -23,6 +23,7 @@ from ..services.downloader import (
     DownloadResult,
     FileTooLargeError,
     LiveStreamError,
+    MediaInfo,
     MediaKind,
     UnsupportedURLError,
     download,
@@ -37,6 +38,10 @@ CALLBACK_PREFIX = "dl"
 ACTION_VIDEO = "v"
 ACTION_AUDIO = "a"
 ACTION_CANCEL = "c"
+
+QUALITY_HD = "hd"
+QUALITY_SD = "sd"
+SD_HEIGHT = 360
 
 _BOT_DATA_SETTINGS = "settings"
 _BOT_DATA_CACHE = "url_cache"
@@ -67,29 +72,51 @@ def _build_keyboard(token: str) -> InlineKeyboardMarkup:
         [
             [
                 InlineKeyboardButton(
-                    "🎬 Видео", callback_data=f"{CALLBACK_PREFIX}:{ACTION_VIDEO}:{token}"
+                    "🎬 Видео HD",
+                    callback_data=f"{CALLBACK_PREFIX}:{ACTION_VIDEO}:{QUALITY_HD}:{token}",
                 ),
                 InlineKeyboardButton(
-                    "🎵 Аудио (MP3)", callback_data=f"{CALLBACK_PREFIX}:{ACTION_AUDIO}:{token}"
+                    "📱 Видео SD",
+                    callback_data=f"{CALLBACK_PREFIX}:{ACTION_VIDEO}:{QUALITY_SD}:{token}",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "✖ Отмена", callback_data=f"{CALLBACK_PREFIX}:{ACTION_CANCEL}:0"
+                    "🎵 Аудио (MP3)",
+                    callback_data=f"{CALLBACK_PREFIX}:{ACTION_AUDIO}:0:{token}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "✖ Отмена",
+                    callback_data=f"{CALLBACK_PREFIX}:{ACTION_CANCEL}:0:0",
                 )
             ],
         ]
     )
 
 
-def _format_choice_message(title: str, uploader: str | None, duration: int | None) -> str:
-    head = f"<b>{html.escape(title)}</b>"
-    parts = []
-    if uploader:
-        parts.append(html.escape(uploader))
-    parts.append(format_duration(duration))
-    meta = " · ".join(parts)
-    return f"{head}\n{meta}\n\nЧто прислать?"
+def _format_size_mb(size_bytes: int) -> str:
+    return f"{size_bytes / 1024 / 1024:.1f}"
+
+
+def _format_choice_message(info: MediaInfo) -> str:
+    title = html.escape(info.title or "Без названия")
+    lines = [f"✨ <b>{title}</b>"]
+
+    meta_parts: list[str] = []
+    if info.uploader:
+        meta_parts.append(f"👤 {html.escape(info.uploader)}")
+    if info.duration:
+        meta_parts.append(f"⏱ {format_duration(info.duration)}")
+    if info.extractor:
+        meta_parts.append(f"📺 {html.escape(info.extractor)}")
+    if meta_parts:
+        lines.append(" · ".join(meta_parts))
+
+    lines.append("")
+    lines.append("Выбери формат:")
+    return "\n".join(lines)
 
 
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -98,7 +125,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
     settings = get_settings(context)
     if not settings.is_user_allowed(_user_id(update)):
-        await message.reply_text("У тебя нет доступа к этому боту.")
+        await message.reply_text("🚫 У тебя нет доступа к этому боту.")
         return
 
     text = message.text or message.caption or ""
@@ -106,26 +133,36 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not url:
         return
 
-    placeholder = await message.reply_text("Ищу видео…")
+    placeholder = await message.reply_text("🔍 <b>Ищу видео…</b>", parse_mode="HTML")
 
     try:
         info = await fetch_info(url)
     except UnsupportedURLError:
-        await placeholder.edit_text("Эта ссылка не поддерживается.")
+        await placeholder.edit_text(
+            "❌ <b>Эта ссылка не поддерживается.</b>\n\n"
+            "Загляни в /menu — там есть список поддерживаемых платформ.",
+            parse_mode="HTML",
+        )
         return
     except DownloadError as err:
         logger.warning("fetch_info failed for %s: %s", url, err)
-        await placeholder.edit_text("Не удалось получить информацию о видео.")
+        await placeholder.edit_text(
+            "❌ <b>Не удалось получить инфо о видео.</b>\nПроверь ссылку и попробуй ещё раз.",
+            parse_mode="HTML",
+        )
         return
 
     if info.is_live:
-        await placeholder.edit_text("Прямые трансляции скачивать нельзя.")
+        await placeholder.edit_text(
+            "📡 <b>Прямые трансляции скачивать нельзя.</b>\nПришли ссылку, когда стрим закончится.",
+            parse_mode="HTML",
+        )
         return
 
     cache = get_cache(context)
     token = cache.put(url)
     keyboard = _build_keyboard(token)
-    body = _format_choice_message(info.title, info.uploader, info.duration)
+    body = _format_choice_message(info)
 
     try:
         await placeholder.edit_text(
@@ -137,7 +174,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     except BadRequest:
         # Fallback without HTML in case the title contains weird entities
         await placeholder.edit_text(
-            f"{info.title}\n\nЧто прислать?",
+            f"{info.title}\n\nВыбери формат:",
             reply_markup=keyboard,
             disable_web_page_preview=True,
         )
@@ -151,7 +188,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     settings = get_settings(context)
     if not settings.is_user_allowed(_user_id(update)):
-        await query.edit_message_text("У тебя нет доступа к этому боту.")
+        await query.edit_message_text("🚫 У тебя нет доступа к этому боту.")
         return
 
     parts = query.data.split(":")
@@ -160,17 +197,21 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     action = parts[1]
 
     if action == ACTION_CANCEL:
-        await query.edit_message_text("Отменено.")
+        await query.edit_message_text("✖ <b>Отменено.</b>", parse_mode="HTML")
         return
 
-    if action not in {ACTION_VIDEO, ACTION_AUDIO} or len(parts) < 3:
+    if action not in {ACTION_VIDEO, ACTION_AUDIO} or len(parts) < 4:
         return
 
-    token = parts[2]
+    quality = parts[2]
+    token = parts[3]
     cache = get_cache(context)
     url = cache.pop(token)
     if url is None:
-        await query.edit_message_text("Срок действия ссылки истёк, отправь её ещё раз.")
+        await query.edit_message_text(
+            "⌛ <b>Срок действия ссылки истёк</b> — пришли её ещё раз.",
+            parse_mode="HTML",
+        )
         return
 
     kind = MediaKind.VIDEO if action == ACTION_VIDEO else MediaKind.AUDIO
@@ -178,8 +219,19 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if chat_id is None:
         return
 
-    await query.edit_message_text(f"Скачиваю {'видео' if kind is MediaKind.VIDEO else 'аудио'}…")
-    chat_action = ChatAction.UPLOAD_VIDEO if kind is MediaKind.VIDEO else ChatAction.UPLOAD_VOICE
+    if kind is MediaKind.VIDEO:
+        max_height = SD_HEIGHT if quality == QUALITY_SD else settings.max_video_height
+        quality_label = (
+            f"SD {SD_HEIGHT}p" if quality == QUALITY_SD else f"HD {settings.max_video_height}p"
+        )
+        status_text = f"📥 <b>Скачиваю видео…</b>\n<i>Качество: {quality_label}</i>"
+        chat_action = ChatAction.UPLOAD_VIDEO
+    else:
+        max_height = settings.max_video_height
+        status_text = "🎵 <b>Готовлю MP3…</b>\n<i>192 kbps</i>"
+        chat_action = ChatAction.UPLOAD_VOICE
+
+    await query.edit_message_text(status_text, parse_mode="HTML")
     with contextlib.suppress(TelegramError):
         await context.bot.send_chat_action(chat_id=chat_id, action=chat_action)
 
@@ -188,32 +240,49 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             url,
             kind=kind,
             max_filesize_bytes=settings.max_file_size_bytes,
-            max_height=settings.max_video_height,
+            max_height=max_height,
             cookiefile=settings.cookies_file,
         )
     except UnsupportedURLError:
-        await query.edit_message_text("Ссылка не поддерживается.")
+        await query.edit_message_text("❌ <b>Ссылка не поддерживается.</b>", parse_mode="HTML")
         return
     except LiveStreamError:
-        await query.edit_message_text("Прямые трансляции скачивать нельзя.")
+        await query.edit_message_text(
+            "📡 <b>Прямые трансляции скачивать нельзя.</b>", parse_mode="HTML"
+        )
         return
     except FileTooLargeError as err:
         await query.edit_message_text(
-            f"Файл слишком большой: {err.size_mb:.1f} МБ > {err.limit_mb:.0f} МБ. "
-            "Попробуй вариант «Аудио (MP3)» или более короткий ролик."
+            f"⚠️ <b>Файл слишком большой:</b> {err.size_mb:.1f} МБ "
+            f"(лимит {err.limit_mb:.0f} МБ).\n"
+            "Попробуй вариант <i>«🎵 Аудио (MP3)»</i> или ссылку покороче.",
+            parse_mode="HTML",
         )
         return
     except DownloadError as err:
         logger.warning("download failed for %s: %s", url, err)
-        await query.edit_message_text("Ошибка при скачивании.")
+        await query.edit_message_text(
+            "❌ <b>Ошибка при скачивании.</b>\nПопробуй ещё раз через минуту.",
+            parse_mode="HTML",
+        )
         return
 
     try:
+        with contextlib.suppress(TelegramError):
+            await query.edit_message_text("📤 <b>Отправляю файл…</b>", parse_mode="HTML")
         await _send_result(context, chat_id=chat_id, result=result)
-        await query.edit_message_text(f"Готово: {result.title[:200]}")
+        size_mb = _format_size_mb(result.path.stat().st_size)
+        kind_label = "🎬 Видео" if kind is MediaKind.VIDEO else "🎵 MP3"
+        title = html.escape(result.title[:200])
+        with contextlib.suppress(TelegramError):
+            await query.edit_message_text(
+                f"✅ <b>Готово!</b>\n\n<b>{title}</b>\n{kind_label} · 📦 {size_mb} МБ",
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
     except TelegramError:
         logger.exception("failed to send media")
-        await query.edit_message_text("Не удалось отправить файл.")
+        await query.edit_message_text("❌ <b>Не удалось отправить файл.</b>", parse_mode="HTML")
     finally:
         result.cleanup()
 

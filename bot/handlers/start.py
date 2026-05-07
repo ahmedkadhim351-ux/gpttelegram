@@ -1,45 +1,56 @@
-"""``/start``, ``/help`` and ``/about`` commands."""
+"""``/start``, ``/help``, ``/menu`` and ``/about`` commands."""
 
 from __future__ import annotations
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
-WELCOME = (
-    "Привет! Я качаю видео и аудио из соцсетей.\n\n"
-    "Просто пришли мне ссылку — на YouTube, TikTok, Instagram, X (Twitter), "
-    "Reddit, Facebook, VK, SoundCloud и ещё пару сотен сайтов — и выбери, "
-    "что прислать обратно: видео или MP3.\n\n"
-    "Команды:\n"
-    "/help — это сообщение\n"
-    "/about — список поддерживаемых сайтов и ограничения"
-)
-
-ABOUT = (
-    "Под капотом — yt-dlp, поэтому работает почти везде, где есть видео.\n"
-    "Полный список платформ: https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md\n\n"
-    "Ограничения:\n"
-    "• Telegram пускает боты заливать файлы до 50 МБ. Если ролик больше — "
-    "попробуй вариант «Аудио (MP3)» или ссылку покороче.\n"
-    "• Прямые трансляции и плейлисты не поддерживаются.\n"
-    "• Контент 18+, приватные видео и страницы за логином качаются только "
-    "при настроенном файле cookies."
+from .menu import (
+    HELP_HTML,
+    SITES_HTML,
+    back_keyboard,
+    main_menu_keyboard,
+    welcome_html,
 )
 
 
 async def cmd_start(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
-    if message is not None:
-        await message.reply_text(WELCOME, disable_web_page_preview=True)
+    if message is None:
+        return
+    user = update.effective_user
+    name = user.first_name if user is not None else None
+    await message.reply_text(
+        welcome_html(name),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=main_menu_keyboard(),
+    )
+
+
+async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await cmd_start(update, context)
 
 
 async def cmd_help(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
-    if message is not None:
-        await message.reply_text(WELCOME, disable_web_page_preview=True)
+    if message is None:
+        return
+    await message.reply_text(
+        HELP_HTML,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=back_keyboard(),
+    )
 
 
 async def cmd_about(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
-    if message is not None:
-        await message.reply_text(ABOUT, disable_web_page_preview=True)
+    if message is None:
+        return
+    await message.reply_text(
+        SITES_HTML,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=back_keyboard(),
+    )

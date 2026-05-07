@@ -13,7 +13,7 @@ from telegram.ext import (
 )
 
 from .config import Settings
-from .handlers import download, errors, start
+from .handlers import download, errors, menu, start
 from .services.cache import TokenCache
 
 
@@ -23,8 +23,10 @@ def create_application(settings: Settings) -> Application:
     application.bot_data["url_cache"] = TokenCache()
 
     application.add_handler(CommandHandler("start", start.cmd_start))
+    application.add_handler(CommandHandler("menu", start.cmd_menu))
     application.add_handler(CommandHandler("help", start.cmd_help))
     application.add_handler(CommandHandler("about", start.cmd_about))
+    application.add_handler(CallbackQueryHandler(menu.on_menu, pattern=r"^menu:"))
     application.add_handler(CallbackQueryHandler(download.on_callback, pattern=r"^dl:"))
     application.add_handler(
         MessageHandler(
