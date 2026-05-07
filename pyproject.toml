@@ -1,0 +1,54 @@
+[project]
+name = "gpt-telegram-bot"
+version = "0.1.0"
+description = "Telegram bot powered by OpenAI GPT (chat, DALL-E, Whisper, model switching)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Ahmed Kadhim" }]
+dependencies = [
+    "aiogram>=3.4.1",
+    "openai>=1.30.0",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "python-dotenv>=1.0",
+    "httpx>=0.27",
+    "tenacity>=8.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[project.scripts]
+gpt-telegram-bot = "bot.main:run"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["bot*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "BLE", "UP", "ASYNC", "RUF"]
+# RUF001/002/003 flag Cyrillic characters as "ambiguous" — false positives for our Russian UI strings.
+ignore = ["E501", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use bare ``except``/``Exception`` patterns and don't need the same noise.
+"tests/*" = ["BLE001"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
